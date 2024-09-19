@@ -95,6 +95,9 @@ class MammotionDataUpdateCoordinator(DataUpdateCoordinator[MowingDevice]):
                     await self.manager.login_and_initiate_cloud(account, password)
                 except ClientConnectorError as err:
                     raise ConfigEntryNotReady(err)
+                except Exception as e:
+                    LOGGER.error(f"Error during login_and_initiate_cloud: {e}")
+                    raise ConfigEntryNotReady from e
 
                 # address previous bugs
                 if address is None and preference == ConnectionPreference.BLUETOOTH:
