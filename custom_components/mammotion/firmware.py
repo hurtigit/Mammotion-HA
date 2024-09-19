@@ -8,6 +8,7 @@ from homeassistant.const import EntityCategory
 
 from .coordinator import MammotionDataUpdateCoordinator
 from .entity import MammotionBaseEntity
+from .error_handling import MammotionErrorHandling
 
 class MammotionFirmwareUpdateCoordinator(DataUpdateCoordinator):
     """Coordinator to manage firmware updates for Mammotion devices."""
@@ -16,24 +17,37 @@ class MammotionFirmwareUpdateCoordinator(DataUpdateCoordinator):
         """Initialize the firmware update coordinator."""
         super().__init__(hass, coordinator.logger, name="Mammotion Firmware Update")
         self.coordinator = coordinator
+        self.error_handler = MammotionErrorHandling(hass)
 
     async def async_check_for_updates(self):
         """Check for firmware updates."""
-        await self.coordinator.async_send_command("check_firmware_update")
+        try:
+            await self.coordinator.async_send_command("check_firmware_update")
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_check_for_updates")
 
     async def async_download_update(self):
         """Download firmware update."""
-        await self.coordinator.async_send_command("download_firmware_update")
+        try:
+            await self.coordinator.async_send_command("download_firmware_update")
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_download_update")
 
     async def async_install_update(self):
         """Install firmware update."""
-        await self.coordinator.async_send_command("install_firmware_update")
+        try:
+            await self.coordinator.async_send_command("install_firmware_update")
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_install_update")
 
     async def async_update(self):
         """Update the firmware."""
-        await self.async_check_for_updates()
-        await self.async_download_update()
-        await self.async_install_update()
+        try:
+            await self.async_check_for_updates()
+            await self.async_download_update()
+            await self.async_install_update()
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_update")
 
 class MammotionFirmwareUpdateEntity(MammotionBaseEntity, UpdateEntity):
     """Representation of a firmware update entity for Mammotion devices."""
@@ -45,19 +59,32 @@ class MammotionFirmwareUpdateEntity(MammotionBaseEntity, UpdateEntity):
         self._attr_name = "Firmware Update"
         self._attr_unique_id = f"{coordinator.device_name}_firmware_update"
         self._attr_should_poll = False
+        self.error_handler = MammotionErrorHandling(coordinator.hass)
 
     async def async_update(self):
         """Update the firmware entity."""
-        await self.coordinator.async_update()
+        try:
+            await self.coordinator.async_update()
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_update")
 
     async def async_check_for_updates(self):
         """Check for firmware updates."""
-        await self.coordinator.async_check_for_updates()
+        try:
+            await self.coordinator.async_check_for_updates()
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_check_for_updates")
 
     async def async_download_update(self):
         """Download firmware update."""
-        await self.coordinator.async_download_update()
+        try:
+            await self.coordinator.async_download_update()
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_download_update")
 
     async def async_install_update(self):
         """Install firmware update."""
-        await self.coordinator.async_install_update()
+        try:
+            await self.coordinator.async_install_update()
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_install_update")

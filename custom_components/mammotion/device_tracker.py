@@ -12,6 +12,7 @@ from . import MammotionConfigEntry
 from .const import ATTR_DIRECTION
 from .coordinator import MammotionDataUpdateCoordinator
 from .entity import MammotionBaseEntity
+from .error_handling import MammotionErrorHandling
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,8 +24,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up the RTK tracker from config entry."""
     coordinator: MammotionDataUpdateCoordinator = config_entry.runtime_data
+    error_handler = MammotionErrorHandling(hass)
 
-    async_add_entities([MammotionTracker(coordinator)])
+    try:
+        async_add_entities([MammotionTracker(coordinator)])
+    except Exception as error:
+        error_handler.handle_error(error, "async_setup_entry")
 
 
 class MammotionTracker(MammotionBaseEntity, TrackerEntity, RestoreEntity):

@@ -15,6 +15,7 @@ from pymammotion.proto.luba_msg import LubaMsg
 from . import MammotionConfigEntry
 from .coordinator import MammotionDataUpdateCoordinator
 from .entity import MammotionBaseEntity
+from .error_handling import MammotionErrorHandling
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -49,11 +50,15 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Mammotion sensor entity."""
     coordinator: MammotionDataUpdateCoordinator = entry.runtime_data
+    error_handler = MammotionErrorHandling(hass)
 
-    async_add_entities(
-        MammotionBinarySensorEntity(coordinator, entity_description)
-        for entity_description in BINARY_SENSORS
-    )
+    try:
+        async_add_entities(
+            MammotionBinarySensorEntity(coordinator, entity_description)
+            for entity_description in BINARY_SENSORS
+        )
+    except Exception as error:
+        error_handler.handle_error(error, "async_setup_entry")
 
 
 class MammotionBinarySensorEntity(MammotionBaseEntity, BinarySensorEntity):

@@ -29,6 +29,7 @@ from pymammotion.utility.device_type import DeviceType
 from . import MammotionConfigEntry
 from .coordinator import MammotionDataUpdateCoordinator
 from .entity import MammotionBaseEntity
+from .error_handling import MammotionErrorHandling
 
 SPEED_UNITS = SpeedConverter.VALID_UNITS
 
@@ -197,16 +198,20 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensor platform."""
     coordinator: MammotionDataUpdateCoordinator = entry.runtime_data
+    error_handler = MammotionErrorHandling(hass)
 
-    if not DeviceType.is_yuka(coordinator.device_name):
+    try:
+        if not DeviceType.is_yuka(coordinator.device_name):
+            async_add_entities(
+                MammotionSensorEntity(coordinator, description)
+                for description in LUBA_SENSOR_ONLY_TYPES
+            )
+
         async_add_entities(
-            MammotionSensorEntity(coordinator, description)
-            for description in LUBA_SENSOR_ONLY_TYPES
+            MammotionSensorEntity(coordinator, description) for description in SENSOR_TYPES
         )
-
-    async_add_entities(
-        MammotionSensorEntity(coordinator, description) for description in SENSOR_TYPES
-    )
+    except Exception as error:
+        error_handler.handle_error(error, "async_setup_entry")
 
 
 class MammotionSensorEntity(MammotionBaseEntity, SensorEntity):

@@ -11,6 +11,7 @@ from pymammotion.utility.device_type import DeviceType
 from . import MammotionConfigEntry
 from .coordinator import MammotionDataUpdateCoordinator
 from .entity import MammotionBaseEntity
+from .error_handling import MammotionErrorHandling
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -87,59 +88,65 @@ async def async_setup_entry(
     """Set up the Mammotion switch entities."""
     coordinator = entry.runtime_data
     added_areas: set[str] = set()
+    error_handler = MammotionErrorHandling(hass)
 
     @callback
     def add_entities() -> None:
         """Handle addition of mowing areas."""
-
-        switch_entities: list[MammotionConfigAreaSwitchEntity] = []
-        areas = coordinator.data.map.area.keys()
-        area_name = coordinator.data.map.area_name
-        new_areas = areas - added_areas
-        if new_areas:
-            for area_id in new_areas:
-                existing_name: AreaHashName = next(
-                    (area for area in area_name if area.hash.__str__() == area_id), None
-                )
-                name = existing_name.name if existing_name else f"mowing area {area_id}"
-                base_area_switch_entity = MammotionConfigAreaSwitchEntityDescription(
-                    key=f"{area_id}",
-                    area=area_id,
-                    name=f"{name}",
-                    set_fn=lambda coord,
-                    bool_val,
-                    value: coord.operation_settings.areas.append(value)
-                    if bool_val
-                    else coord.operation_settings.areas.remove(value),
-                )
-                switch_entities.append(
-                    MammotionConfigAreaSwitchEntity(
-                        coordinator,
-                        base_area_switch_entity,
+        try:
+            switch_entities: list[MammotionConfigAreaSwitchEntity] = []
+            areas = coordinator.data.map.area.keys()
+            area_name = coordinator.data.map.area_name
+            new_areas = areas - added_areas
+            if new_areas:
+                for area_id in new_areas:
+                    existing_name: AreaHashName = next(
+                        (area for area in area_name if area.hash.__str__() == area_id), None
                     )
-                )
-                added_areas.add(area_id)
+                    name = existing_name.name if existing_name else f"mowing area {area_id}"
+                    base_area_switch_entity = MammotionConfigAreaSwitchEntityDescription(
+                        key=f"{area_id}",
+                        area=area_id,
+                        name=f"{name}",
+                        set_fn=lambda coord,
+                        bool_val,
+                        value: coord.operation_settings.areas.append(value)
+                        if bool_val
+                        else coord.operation_settings.areas.remove(value),
+                    )
+                    switch_entities.append(
+                        MammotionConfigAreaSwitchEntity(
+                            coordinator,
+                            base_area_switch_entity,
+                        )
+                    )
+                    added_areas.add(area_id)
 
-        if switch_entities:
-            async_add_entities(switch_entities)
+            if switch_entities:
+                async_add_entities(switch_entities)
+        except Exception as error:
+            error_handler.handle_error(error, "add_entities")
 
     add_entities()
     coordinator.async_add_listener(add_entities)
 
     entities = []
-    for entity_description in SWITCH_ENTITIES:
-        entity = MammotionSwitchEntity(coordinator, entity_description)
-        entities.append(entity)
+    try:
+        for entity_description in SWITCH_ENTITIES:
+            entity = MammotionSwitchEntity(coordinator, entity_description)
+            entities.append(entity)
 
-    for entity_description in CONFIG_SWITCH_ENTITIES:
-        config_entity = MammotionConfigSwitchEntity(coordinator, entity_description)
-        entities.append(config_entity)
-
-    if DeviceType.is_yuka(coordinator.device_name):
-        for entity_description in YUKA_CONFIG_SWITCH_ENTITIES:
+        for entity_description in CONFIG_SWITCH_ENTITIES:
             config_entity = MammotionConfigSwitchEntity(coordinator, entity_description)
             entities.append(config_entity)
-    async_add_entities(entities)
+
+        if DeviceType.is_yuka(coordinator.device_name):
+            for entity_description in YUKA_CONFIG_SWITCH_ENTITIES:
+                config_entity = MammotionConfigSwitchEntity(coordinator, entity_description)
+                entities.append(config_entity)
+        async_add_entities(entities)
+    except Exception as error:
+        error_handler.handle_error(error, "async_setup_entry")
 
 
 class MammotionSwitchEntity(MammotionBaseEntity, SwitchEntity):
@@ -158,14 +165,22 @@ class MammotionSwitchEntity(MammotionBaseEntity, SwitchEntity):
         self._attr_is_on = False  # Default state
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        self._attr_is_on = True
-        await self.entity_description.set_fn(self.coordinator, True)
-        self.async_write_ha_state()
+        error_handler = MammotionErrorHandling(self.hass)
+        try:
+            self._attr_is_on = True
+            await self.entity_description.set_fn(self.coordinator, True)
+            self.async_write_ha_state()
+        except Exception as error:
+            error_handler.handle_error(error, "async_turn_on")
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        self._attr_is_on = False
-        await self.entity_description.set_fn(self.coordinator, False)
-        self.async_write_ha_state()
+        error_handler = MammotionErrorHandling(self.hass)
+        try:
+            self._attr_is_on = False
+            await self.entity_description.set_fn(self.coordinator, False)
+            self.async_write_ha_state()
+        except Exception as error:
+            error_handler.handle_error(error, "async_turn_off")
 
     async def async_update(self) -> None:
         """Update the entity state."""
@@ -189,14 +204,22 @@ class MammotionConfigSwitchEntity(MammotionBaseEntity, SwitchEntity, RestoreEnti
         self._attr_is_on = False  # Default state
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        self._attr_is_on = True
-        self.entity_description.set_fn(self.coordinator, True)
-        self.async_write_ha_state()
+        error_handler = MammotionErrorHandling(self.hass)
+        try:
+            self._attr_is_on = True
+            self.entity_description.set_fn(self.coordinator, True)
+            self.async_write_ha_state()
+        except Exception as error:
+            error_handler.handle_error(error, "async_turn_on")
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        self._attr_is_on = False
-        self.entity_description.set_fn(self.coordinator, False)
-        self.async_write_ha_state()
+        error_handler = MammotionErrorHandling(self.hass)
+        try:
+            self._attr_is_on = False
+            self.entity_description.set_fn(self.coordinator, False)
+            self.async_write_ha_state()
+        except Exception as error:
+            error_handler.handle_error(error, "async_turn_off")
 
     async def async_update(self) -> None:
         """Update the entity state."""
@@ -221,18 +244,26 @@ class MammotionConfigAreaSwitchEntity(MammotionBaseEntity, SwitchEntity, Restore
         self._attr_is_on = False  # Default state
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        self._attr_is_on = True
-        self.entity_description.set_fn(
-            self.coordinator, True, self.entity_description.area
-        )
-        self.async_write_ha_state()
+        error_handler = MammotionErrorHandling(self.hass)
+        try:
+            self._attr_is_on = True
+            self.entity_description.set_fn(
+                self.coordinator, True, self.entity_description.area
+            )
+            self.async_write_ha_state()
+        except Exception as error:
+            error_handler.handle_error(error, "async_turn_on")
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        self._attr_is_on = False
-        self.entity_description.set_fn(
-            self.coordinator, False, self.entity_description.area
-        )
-        self.async_write_ha_state()
+        error_handler = MammotionErrorHandling(self.hass)
+        try:
+            self._attr_is_on = False
+            self.entity_description.set_fn(
+                self.coordinator, False, self.entity_description.area
+            )
+            self.async_write_ha_state()
+        except Exception as error:
+            error_handler.handle_error(error, "async_turn_off")
 
     async def async_update(self) -> None:
         """Update the entity state."""

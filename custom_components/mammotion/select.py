@@ -19,6 +19,7 @@ from pymammotion.utility.device_type import DeviceType
 from . import MammotionConfigEntry
 from .coordinator import MammotionDataUpdateCoordinator
 from .entity import MammotionBaseEntity
+from .error_handling import MammotionErrorHandling
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -113,22 +114,26 @@ async def async_setup_entry(
     """Set up the Mammotion select entity."""
     coordinator = entry.runtime_data
     entities = []
+    error_handler = MammotionErrorHandling(hass)
 
-    for entity_description in SELECT_ENTITIES:
-        entities.append(MammotionConfigSelectEntity(coordinator, entity_description))
+    try:
+        for entity_description in SELECT_ENTITIES:
+            entities.append(MammotionConfigSelectEntity(coordinator, entity_description))
 
-    if DeviceType.is_luba1(coordinator.device_name):
-        for entity_description in LUBA1_SELECT_ENTITIES:
-            entities.append(
-                MammotionConfigSelectEntity(coordinator, entity_description)
-            )
-    else:
-        for entity_description in LUBA_PRO_SELECT_ENTITIES:
-            entities.append(
-                MammotionConfigSelectEntity(coordinator, entity_description)
-            )
+        if DeviceType.is_luba1(coordinator.device_name):
+            for entity_description in LUBA1_SELECT_ENTITIES:
+                entities.append(
+                    MammotionConfigSelectEntity(coordinator, entity_description)
+                )
+        else:
+            for entity_description in LUBA_PRO_SELECT_ENTITIES:
+                entities.append(
+                    MammotionConfigSelectEntity(coordinator, entity_description)
+                )
 
-    async_add_entities(entities)
+        async_add_entities(entities)
+    except Exception as error:
+        error_handler.handle_error(error, "async_setup_entry")
 
 
 # Define the select entity class with entity_category: config
@@ -153,6 +158,10 @@ class MammotionConfigSelectEntity(MammotionBaseEntity, SelectEntity, RestoreEnti
         self._attr_current_option = entity_description.options[0]
 
     async def async_select_option(self, option: str) -> None:
-        self._attr_current_option = option
-        self.entity_description.set_fn(self.coordinator, option)
-        self.async_write_ha_state()
+        error_handler = MammotionErrorHandling(self.hass)
+        try:
+            self._attr_current_option = option
+            self.entity_description.set_fn(self.coordinator, option)
+            self.async_write_ha_state()
+        except Exception as error:
+            error_handler.handle_error(error, "async_select_option")

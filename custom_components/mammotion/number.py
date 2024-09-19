@@ -24,6 +24,7 @@ from pymammotion.utility.device_type import DeviceType
 from . import MammotionConfigEntry
 from .coordinator import MammotionDataUpdateCoordinator
 from .entity import MammotionBaseEntity
+from .error_handling import MammotionErrorHandling
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -118,29 +119,33 @@ async def async_setup_entry(
     """Set up the Mammotion number entities."""
     coordinator: MammotionDataUpdateCoordinator = entry.runtime_data
     limits = coordinator.manager.mower(coordinator.device_name).limits
+    error_handler = MammotionErrorHandling(hass)
 
-    entities: list[MammotionConfigNumberEntity] = []
+    try:
+        entities: list[MammotionConfigNumberEntity] = []
 
-    for entity_description in NUMBER_WORKING_ENTITIES:
-        entity = MammotionWorkingNumberEntity(coordinator, entity_description, limits)
-        entities.append(entity)
+        for entity_description in NUMBER_WORKING_ENTITIES:
+            entity = MammotionWorkingNumberEntity(coordinator, entity_description, limits)
+            entities.append(entity)
 
-    for entity_description in NUMBER_ENTITIES:
-        entity = MammotionConfigNumberEntity(coordinator, entity_description)
-        entities.append(entity)
-
-    if DeviceType.is_yuka(coordinator.device_name):
-        for entity_description in YUKA_NUMBER_ENTITIES:
+        for entity_description in NUMBER_ENTITIES:
             entity = MammotionConfigNumberEntity(coordinator, entity_description)
             entities.append(entity)
-    else:
-        for entity_description in LUBA_WORKING_ENTITIES:
-            entity = MammotionWorkingNumberEntity(
-                coordinator, entity_description, limits
-            )
-            entities.append(entity)
 
-    async_add_entities(entities)
+        if DeviceType.is_yuka(coordinator.device_name):
+            for entity_description in YUKA_NUMBER_ENTITIES:
+                entity = MammotionConfigNumberEntity(coordinator, entity_description)
+                entities.append(entity)
+        else:
+            for entity_description in LUBA_WORKING_ENTITIES:
+                entity = MammotionWorkingNumberEntity(
+                    coordinator, entity_description, limits
+                )
+                entities.append(entity)
+
+        async_add_entities(entities)
+    except Exception as error:
+        error_handler.handle_error(error, "async_setup_entry")
 
 
 class MammotionConfigNumberEntity(MammotionBaseEntity, NumberEntity, RestoreEntity):
@@ -162,9 +167,12 @@ class MammotionConfigNumberEntity(MammotionBaseEntity, NumberEntity, RestoreEnti
         self._attr_native_value = self._attr_native_min_value  # Default value
 
     async def async_set_native_value(self, value: float | int) -> None:
-        self._attr_native_value = value
-        self.entity_description.set_fn(self.coordinator, value)
-        self.async_write_ha_state()
+        try:
+            self._attr_native_value = value
+            self.entity_description.set_fn(self.coordinator, value)
+            self.async_write_ha_state()
+        except Exception as error:
+            error_handler.handle_error(error, "async_set_native_value")
 
 
 class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
@@ -200,6 +208,9 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
         return self._attr_native_max_value
 
     async def async_set_native_value(self, value: float | int) -> None:
-        self._attr_native_value = value
-        self.entity_description.set_fn(self.coordinator, value)
-        self.async_write_ha_state()
+        try:
+            self._attr_native_value = value
+            self.entity_description.set_fn(self.coordinator, value)
+            self.async_write_ha_state()
+        except Exception as error:
+            error_handler.handle_error(error, "async_set_native_value")

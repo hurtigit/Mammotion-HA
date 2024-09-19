@@ -19,6 +19,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import MammotionDataUpdateCoordinator
+from .error_handling import MammotionErrorHandling
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
@@ -38,51 +39,58 @@ async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) ->
     """Set up Mammotion Luba from a config entry."""
     assert entry.unique_id is not None
 
-    if CONF_ADDRESS not in entry.data and CONF_MAC in entry.data:
-        # Bleak uses addresses not mac addresses which are actually
-        # UUIDs on some platforms (MacOS).
-        mac = entry.data[CONF_MAC]
-        if "-" not in mac:
-            mac = dr.format_mac(mac)
-        hass.config_entries.async_update_entry(
-            entry,
-            data={**entry.data, CONF_ADDRESS: mac},
+    error_handler = MammotionErrorHandling(hass)
+
+    try:
+        if CONF_ADDRESS not in entry.data and CONF_MAC in entry.data:
+            # Bleak uses addresses not mac addresses which are actually
+            # UUIDs on some platforms (MacOS).
+            mac = entry.data[CONF_MAC]
+            if "-" not in mac:
+                mac = dr.format_mac(mac)
+            hass.config_entries.async_update_entry(
+                entry,
+                data={**entry.data, CONF_ADDRESS: mac},
+            )
+
+        if not entry.options:
+            hass.config_entries.async_update_entry(
+                entry,
+                options={CONF_RETRY_COUNT: DEFAULT_RETRY_COUNT},
+            )
+
+        mammotion_coordinator = MammotionDataUpdateCoordinator(hass, entry)
+        await mammotion_coordinator.async_setup()
+
+        # config_updates = {}
+        mqtt = mammotion_coordinator.manager.mqtt_list.get(
+            mammotion_coordinator.device_name
         )
+        cloud_client = mqtt.cloud_client if mqtt else None
 
-    if not entry.options:
-        hass.config_entries.async_update_entry(
-            entry,
-            options={CONF_RETRY_COUNT: DEFAULT_RETRY_COUNT},
-        )
+        if CONF_AUTH_DATA not in entry.data and cloud_client:
+            config_updates = {
+                **entry.data,
+                CONF_AUTH_DATA: cloud_client.login_by_oauth_response,
+                CONF_REGION_DATA: cloud_client.region_response,
+                CONF_AEP_DATA: cloud_client.aep_response,
+                CONF_SESSION_DATA: cloud_client.session_by_authcode_response,
+                CONF_DEVICE_DATA: cloud_client.devices_by_account_response,
+            }
+            hass.config_entries.async_update_entry(entry, data=config_updates)
 
-    mammotion_coordinator = MammotionDataUpdateCoordinator(hass, entry)
-    await mammotion_coordinator.async_setup()
+        await mammotion_coordinator.async_config_entry_first_refresh()
+        entry.runtime_data = mammotion_coordinator
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # config_updates = {}
-    mqtt = mammotion_coordinator.manager.mqtt_list.get(
-        mammotion_coordinator.device_name
-    )
-    cloud_client = mqtt.cloud_client if mqtt else None
+        # need to register service for triggering tasks
+        # hass.services.async_register(DOMAIN, SERVICE_START_tASK, async_start_mowing)
 
-    if CONF_AUTH_DATA not in entry.data and cloud_client:
-        config_updates = {
-            **entry.data,
-            CONF_AUTH_DATA: cloud_client.login_by_oauth_response,
-            CONF_REGION_DATA: cloud_client.region_response,
-            CONF_AEP_DATA: cloud_client.aep_response,
-            CONF_SESSION_DATA: cloud_client.session_by_authcode_response,
-            CONF_DEVICE_DATA: cloud_client.devices_by_account_response,
-        }
-        hass.config_entries.async_update_entry(entry, data=config_updates)
+        return True
 
-    await mammotion_coordinator.async_config_entry_first_refresh()
-    entry.runtime_data = mammotion_coordinator
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    # need to register service for triggering tasks
-    # hass.services.async_register(DOMAIN, SERVICE_START_tASK, async_start_mowing)
-
-    return True
+    except Exception as error:
+        error_handler.handle_error(error, "async_setup_entry")
+        return False
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:

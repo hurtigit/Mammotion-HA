@@ -11,6 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import MammotionConfigEntry
 from .coordinator import MammotionDataUpdateCoordinator
 from .entity import MammotionBaseEntity
+from .error_handling import MammotionErrorHandling
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -67,11 +68,15 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Mammotion button sensor entity."""
     coordinator: MammotionDataUpdateCoordinator = entry.runtime_data
+    error_handler = MammotionErrorHandling(hass)
 
-    async_add_entities(
-        MammotionButtonSensorEntity(coordinator, entity_description)
-        for entity_description in BUTTON_SENSORS
-    )
+    try:
+        async_add_entities(
+            MammotionButtonSensorEntity(coordinator, entity_description)
+            for entity_description in BUTTON_SENSORS
+        )
+    except Exception as error:
+        error_handler.handle_error(error, "async_setup_entry")
 
 
 class MammotionButtonSensorEntity(MammotionBaseEntity, ButtonEntity):
@@ -92,4 +97,8 @@ class MammotionButtonSensorEntity(MammotionBaseEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         """Handle the button press."""
-        await self.entity_description.press_fn(self.coordinator)
+        error_handler = MammotionErrorHandling(self.hass)
+        try:
+            await self.entity_description.press_fn(self.coordinator)
+        except Exception as error:
+            error_handler.handle_error(error, "async_press")

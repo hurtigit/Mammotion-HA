@@ -25,6 +25,7 @@ from . import MammotionConfigEntry
 from .const import COMMAND_EXCEPTIONS, DOMAIN, LOGGER
 from .coordinator import MammotionDataUpdateCoordinator
 from .entity import MammotionBaseEntity
+from .error_handling import MammotionErrorHandling
 
 SERVICE_START_MOWING = "start_mow"
 
@@ -111,6 +112,7 @@ class MammotionLawnMowerEntity(MammotionBaseEntity, LawnMowerEntity):
         """Initialize the lawn mower."""
         super().__init__(coordinator, "mower")
         self._attr_name = None  # main feature of device
+        self.error_handler = MammotionErrorHandling(coordinator.hass)
 
     @property
     def rpt_dev_status(self) -> RptDevStatus | None:
@@ -150,74 +152,79 @@ class MammotionLawnMowerEntity(MammotionBaseEntity, LawnMowerEntity):
 
     async def async_start_mowing(self, **kwargs: Any) -> None:
         """Start mowing."""
-        if kwargs:
-            entity_ids = kwargs.get("areas", [])
+        try:
+            if kwargs:
+                entity_ids = kwargs.get("areas", [])
 
-            attributes = [
-                get_entity_attribute(self.hass, entity_id, "hash")
-                for entity_id in entity_ids
-                if get_entity_attribute(self.hass, entity_id, "hash") is not None
-            ]
-            kwargs["areas"] = attributes
-            operational_settings = OperationSettings.from_dict(kwargs)
-            LOGGER.debug(kwargs)
-            await self.coordinator.async_plan_route(operational_settings)
-            await self.coordinator.async_send_command("start_job")
-            await self.coordinator.async_request_iot_sync()
-            return
+                attributes = [
+                    get_entity_attribute(self.hass, entity_id, "hash")
+                    for entity_id in entity_ids
+                    if get_entity_attribute(self.hass, entity_id, "hash") is not None
+                ]
+                kwargs["areas"] = attributes
+                operational_settings = OperationSettings.from_dict(kwargs)
+                LOGGER.debug(kwargs)
+                await self.coordinator.async_plan_route(operational_settings)
+                await self.coordinator.async_send_command("start_job")
+                await self.coordinator.async_request_iot_sync()
+                return
 
-        # check if job in progress
-        #
-        if self.rpt_dev_status is None:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN, translation_key="device_not_ready"
-            )
-        work_area = self.report_data.work.area >> 16
+            # check if job in progress
+            #
+            if self.rpt_dev_status is None:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN, translation_key="device_not_ready"
+                )
+            work_area = self.report_data.work.area >> 16
 
-        if work_area > 0 and self.rpt_dev_status.sys_status in (
-            WorkMode.MODE_PAUSE,
-            WorkMode.MODE_READY,
-        ):
+            if work_area > 0 and self.rpt_dev_status.sys_status in (
+                WorkMode.MODE_PAUSE,
+                WorkMode.MODE_READY,
+            ):
+                try:
+                    await self.coordinator.async_send_command("resume_execute_task")
+                    return await self.coordinator.async_request_iot_sync()
+                except COMMAND_EXCEPTIONS as exc:
+                    raise HomeAssistantError(
+                        translation_domain=DOMAIN, translation_key="resume_failed"
+                    ) from exc
             try:
-                await self.coordinator.async_send_command("resume_execute_task")
-                return await self.coordinator.async_request_iot_sync()
+                await self.coordinator.async_plan_route(self.coordinator.operation_settings)
+                await self.coordinator.async_send_command("start_job")
+                await self.coordinator.async_request_iot_sync()
             except COMMAND_EXCEPTIONS as exc:
                 raise HomeAssistantError(
-                    translation_domain=DOMAIN, translation_key="resume_failed"
+                    translation_domain=DOMAIN, translation_key="start_failed"
                 ) from exc
-        try:
-            await self.coordinator.async_plan_route(self.coordinator.operation_settings)
-            await self.coordinator.async_send_command("start_job")
-            await self.coordinator.async_request_iot_sync()
-        except COMMAND_EXCEPTIONS as exc:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN, translation_key="start_failed"
-            ) from exc
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_start_mowing")
 
     async def async_dock(self) -> None:
         """Start docking."""
-
-        mode = self.rpt_dev_status.sys_status
-        if mode is None:
-            mode = WorkMode.MODE_READY
-
         try:
-            if mode == WorkMode.MODE_RETURNING:
-                await self.coordinator.async_send_command("cancel_return_to_dock")
-                return await self.coordinator.async_request_iot_sync()
-            if mode == WorkMode.MODE_WORKING:
-                await self.coordinator.async_send_command("pause_execute_task")
-            await self.coordinator.async_send_command("return_to_dock")
-            await self.coordinator.async_request_iot_sync()
-        except COMMAND_EXCEPTIONS as exc:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN, translation_key="dock_failed"
-            ) from exc
-        finally:
-            self.coordinator.async_set_updated_data(
-                self.coordinator.manager.mower(self.coordinator.device_name)
-            )
-        return
+            mode = self.rpt_dev_status.sys_status
+            if mode is None:
+                mode = WorkMode.MODE_READY
+
+            try:
+                if mode == WorkMode.MODE_RETURNING:
+                    await self.coordinator.async_send_command("cancel_return_to_dock")
+                    return await self.coordinator.async_request_iot_sync()
+                if mode == WorkMode.MODE_WORKING:
+                    await self.coordinator.async_send_command("pause_execute_task")
+                await self.coordinator.async_send_command("return_to_dock")
+                await self.coordinator.async_request_iot_sync()
+            except COMMAND_EXCEPTIONS as exc:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN, translation_key="dock_failed"
+                ) from exc
+            finally:
+                self.coordinator.async_set_updated_data(
+                    self.coordinator.manager.mower(self.coordinator.device_name)
+                )
+            return
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_dock")
 
     async def async_pause(self) -> None:
         """Pause mower."""
@@ -232,3 +239,5 @@ class MammotionLawnMowerEntity(MammotionBaseEntity, LawnMowerEntity):
             self.coordinator.async_set_updated_data(
                 self.coordinator.manager.mower(self.coordinator.device_name)
             )
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_pause")

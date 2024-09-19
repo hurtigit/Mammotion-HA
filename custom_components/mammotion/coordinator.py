@@ -37,6 +37,7 @@ from .const import (
     DOMAIN,
     LOGGER,
 )
+from .error_handling import MammotionErrorHandling
 
 if TYPE_CHECKING:
     from . import MammotionConfigEntry
@@ -64,6 +65,7 @@ class MammotionDataUpdateCoordinator(DataUpdateCoordinator[MowingDevice]):
         self.config_entry = config_entry
         self._operation_settings = OperationSettings()
         self.update_failures = 0
+        self.error_handler = MammotionErrorHandling(hass)
 
     async def async_setup(self) -> None:
         """Set coordinator up."""
@@ -94,9 +96,11 @@ class MammotionDataUpdateCoordinator(DataUpdateCoordinator[MowingDevice]):
                 try:
                     await self.manager.login_and_initiate_cloud(account, password)
                 except ClientConnectorError as err:
+                    self.error_handler.handle_error(err, "async_setup")
                     raise ConfigEntryNotReady(err)
                 except Exception as e:
                     LOGGER.error(f"Error during login_and_initiate_cloud: {e}")
+                    self.error_handler.handle_error(e, "async_setup")
                     raise ConfigEntryNotReady from e
 
                 # address previous bugs
@@ -106,6 +110,10 @@ class MammotionDataUpdateCoordinator(DataUpdateCoordinator[MowingDevice]):
             if address:
                 ble_device = bluetooth.async_ble_device_from_address(self.hass, address)
                 if not ble_device and credentials is None:
+                    self.error_handler.handle_error(
+                        Exception(f"Could not find Mammotion lawn mower with address {address}"),
+                        "async_setup",
+                    )
                     raise ConfigEntryNotReady(
                         f"Could not find Mammotion lawn mower with address {address}"
                     )
@@ -133,6 +141,10 @@ class MammotionDataUpdateCoordinator(DataUpdateCoordinator[MowingDevice]):
                 self.device_name = mowing_devices[0].deviceName
                 device = self.manager.get_device_by_name(self.device_name)
             else:
+                self.error_handler.handle_error(
+                    Exception(f"Could not find Mammotion lawn mower with name {self.device_name}"),
+                    "async_setup",
+                )
                 raise ConfigEntryNotReady(
                     f"Could not find Mammotion lawn mower with name {self.device_name}"
                 )
@@ -147,11 +159,16 @@ class MammotionDataUpdateCoordinator(DataUpdateCoordinator[MowingDevice]):
                 await device.ble().start_sync(0)
                 device.ble().set_notification_callback(self._async_update_notification)
             else:
+                self.error_handler.handle_error(
+                    Exception("No configuration available to setup Mammotion lawn mower"),
+                    "async_setup",
+                )
                 raise ConfigEntryNotReady(
                     "No configuration available to setup Mammotion lawn mower"
                 )
 
         except COMMAND_EXCEPTIONS as exc:
+            self.error_handler.handle_error(exc, "async_setup")
             raise ConfigEntryNotReady("Unable to setup Mammotion device") from exc
 
         await self.async_restore_data()
@@ -159,93 +176,139 @@ class MammotionDataUpdateCoordinator(DataUpdateCoordinator[MowingDevice]):
     async def async_restore_data(self) -> None:
         """Restore saved data."""
         store = Store(self.hass, version=1, key=self.device_name)
-        restored_data = await store.async_load()
-        if restored_data:
-            if device_dict := restored_data.get("device"):
-                restored_data["device"] = None
-            else:
-                device_dict = LubaMsg().to_dict(casing=betterproto.Casing.SNAKE)
+        try:
+            restored_data = await store.async_load()
+            if restored_data:
+                if device_dict := restored_data.get("device"):
+                    restored_data["device"] = None
+                else:
+                    device_dict = LubaMsg().to_dict(casing=betterproto.Casing.SNAKE)
 
-            self.data = MowingDevice().from_dict(restored_data)
-            self.data.update_raw(device_dict)
-            self.manager.get_device_by_name(self.device_name).mower_state = self.data
+                self.data = MowingDevice().from_dict(restored_data)
+                self.data.update_raw(device_dict)
+                self.manager.get_device_by_name(self.device_name).mower_state = self.data
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_restore_data")
 
     async def async_save_data(self, data: MowingDevice) -> None:
         """Get map data from the device."""
         store = Store(self.hass, version=1, key=self.device_name)
-        stored_data = asdict(data)
-        await store.async_save(stored_data)
+        try:
+            stored_data = asdict(data)
+            await store.async_save(stored_data)
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_save_data")
 
     async def async_sync_maps(self) -> None:
         """Get map data from the device."""
-        await self.manager.start_map_sync(self.device_name)
+        try:
+            await self.manager.start_map_sync(self.device_name)
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_sync_maps")
 
     async def async_start_stop_blades(self, start_stop: bool) -> None:
-        if start_stop:
-            await self.async_send_command("set_blade_control", on_off=1)
-        else:
-            await self.async_send_command("set_blade_control", on_off=0)
+        try:
+            if start_stop:
+                await self.async_send_command("set_blade_control", on_off=1)
+            else:
+                await self.async_send_command("set_blade_control", on_off=0)
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_start_stop_blades")
 
     async def async_set_sidelight(self, on_off: int) -> None:
         """Set Sidelight."""
-        await self.async_send_command(
-            "read_and_set_sidelight", is_sidelight=bool(on_off), operate=0
-        )
+        try:
+            await self.async_send_command(
+                "read_and_set_sidelight", is_sidelight=bool(on_off), operate=0
+            )
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_set_sidelight")
 
     async def async_read_sidelight(self) -> None:
         """Set Sidelight."""
-        await self.async_send_command(
-            "read_and_set_sidelight", is_sidelight=False, operate=1
-        )
+        try:
+            await self.async_send_command(
+                "read_and_set_sidelight", is_sidelight=False, operate=1
+            )
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_read_sidelight")
 
     async def async_blade_height(self, height: int) -> int:
         """Set blade height."""
-        await self.async_send_command("set_blade_height", height=float(height))
-        return height
+        try:
+            await self.async_send_command("set_blade_height", height=float(height))
+            return height
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_blade_height")
+            return 0
 
     async def async_leave_dock(self) -> None:
         """Leave dock."""
-        await self.async_send_command("leave_dock")
+        try:
+            await self.async_send_command("leave_dock")
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_leave_dock")
 
     async def async_cancel_task(self) -> None:
         """Cancel task."""
-        await self.async_send_command("cancel_job")
+        try:
+            await self.async_send_command("cancel_job")
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_cancel_task")
 
     async def async_move_forward(self, speed: float) -> None:
         """Move forward."""
-        await self.async_send_command("move_forward", linear=speed)
+        try:
+            await self.async_send_command("move_forward", linear=speed)
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_move_forward")
 
     async def async_move_left(self, speed: float) -> None:
         """Move left."""
-        await self.async_send_command("move_left", angular=speed)
+        try:
+            await self.async_send_command("move_left", angular=speed)
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_move_left")
 
     async def async_move_right(self, speed: float) -> None:
         """Move right."""
-        await self.async_send_command("move_right", angular=speed)
+        try:
+            await self.async_send_command("move_right", angular=speed)
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_move_right")
 
     async def async_move_back(self, speed: float) -> None:
         """Move back."""
-        await self.async_send_command("move_back", linear=speed)
+        try:
+            await self.async_send_command("move_back", linear=speed)
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_move_back")
 
     async def async_rtk_dock_location(self) -> None:
         """RTK and dock location."""
-        await self.async_send_command("allpowerfull_rw", id=5, rw=1, context=1)
+        try:
+            await self.async_send_command("allpowerfull_rw", id=5, rw=1, context=1)
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_rtk_dock_location")
 
     async def async_request_iot_sync(self, stop: bool = False) -> None:
         """Sync specific info from device."""
-        await self.async_send_command(
-            "request_iot_sys",
-            rpt_act=RptAct.RPT_STOP if stop else RptAct.RPT_START,
-            rpt_info_type=[
-                RptInfoType.RIT_DEV_STA,
-                RptInfoType.RIT_DEV_LOCAL,
-                RptInfoType.RIT_WORK,
-            ],
-            timeout=10000,
-            period=3000,
-            no_change_period=4000,
-            count=0,
-        )
+        try:
+            await self.async_send_command(
+                "request_iot_sys",
+                rpt_act=RptAct.RPT_STOP if stop else RptAct.RPT_START,
+                rpt_info_type=[
+                    RptInfoType.RIT_DEV_STA,
+                    RptInfoType.RIT_DEV_LOCAL,
+                    RptInfoType.RIT_WORK,
+                ],
+                timeout=10000,
+                period=3000,
+                no_change_period=4000,
+                count=0,
+            )
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_request_iot_sync")
 
     async def async_send_command(self, command: str, **kwargs: Any) -> None:
         """Send command."""
@@ -265,9 +328,12 @@ class MammotionDataUpdateCoordinator(DataUpdateCoordinator[MowingDevice]):
                         .queue_command(command, **kwargs)
                     )
             except COMMAND_EXCEPTIONS as exc:
+                self.error_handler.handle_error(exc, "async_send_command")
                 raise HomeAssistantError(
                     translation_domain=DOMAIN, translation_key="command_failed"
                 ) from exc
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_send_command")
 
     async def async_plan_route(self, operation_settings: OperationSettings) -> None:
         """Plan mow."""
@@ -288,53 +354,68 @@ class MammotionDataUpdateCoordinator(DataUpdateCoordinator[MowingDevice]):
             obstacle_laps=operation_settings.obstacle_laps,
         )
 
-        await self.async_send_command(
-            "generate_route_information", generate_route_information=route_information
-        )
+        try:
+            await self.async_send_command(
+                "generate_route_information", generate_route_information=route_information
+            )
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_plan_route")
 
     async def clear_all_maps(self) -> None:
-        data = self.manager.get_device_by_name(self.device_name).mower_state
-        data.map = HashList()
+        try:
+            data = self.manager.get_device_by_name(self.device_name).mower_state
+            data.map = HashList()
+        except Exception as error:
+            self.error_handler.handle_error(error, "clear_all_maps")
 
     async def _async_update_notification(self) -> None:
         """Update data from incoming messages."""
-        mower = self.manager.mower(self.device_name)
-        self.async_set_updated_data(mower)
+        try:
+            mower = self.manager.mower(self.device_name)
+            self.async_set_updated_data(mower)
+        except Exception as error:
+            self.error_handler.handle_error(error, "_async_update_notification")
 
     async def check_firmware_version(self) -> None:
         """Check if firmware version is udpated."""
-        mower = self.manager.mower(self.device_name)
-        device_registry = dr.async_get(self.hass)
-        device_entry = device_registry.async_get_device(
-            identifiers={(DOMAIN, self.device_name)}
-        )
-        if device_entry is None:
-            return
-
-        new_swversion = None
-        if len(mower.net.toapp_devinfo_resp.resp_ids) > 0:
-            new_swversion = mower.net.toapp_devinfo_resp.resp_ids[0].info
-
-        if new_swversion is not None or new_swversion != device_entry.sw_version:
-            device_registry.async_update_device(
-                device_entry.id, sw_version=new_swversion
+        try:
+            mower = self.manager.mower(self.device_name)
+            device_registry = dr.async_get(self.hass)
+            device_entry = device_registry.async_get_device(
+                identifiers={(DOMAIN, self.device_name)}
             )
+            if device_entry is None:
+                return
 
-        model_id = None
-        if has_field(mower.sys.device_product_type_info):
-            model_id = mower.sys.device_product_type_info.main_product_type
+            new_swversion = None
+            if len(mower.net.toapp_devinfo_resp.resp_ids) > 0:
+                new_swversion = mower.net.toapp_devinfo_resp.resp_ids[0].info
 
-        if model_id is not None or model_id != device_entry.model_id:
-            device_registry.async_update_device(device_entry.id, model_id=model_id)
+            if new_swversion is not None or new_swversion != device_entry.sw_version:
+                device_registry.async_update_device(
+                    device_entry.id, sw_version=new_swversion
+                )
+
+            model_id = None
+            if has_field(mower.sys.device_product_type_info):
+                model_id = mower.sys.device_product_type_info.main_product_type
+
+            if model_id is not None or model_id != device_entry.model_id:
+                device_registry.async_update_device(device_entry.id, model_id=model_id)
+        except Exception as error:
+            self.error_handler.handle_error(error, "check_firmware_version")
 
     async def async_login(self) -> None:
         """Login to cloud servers."""
-        await self.hass.async_add_executor_job(
-            self.manager.get_device_by_name(self.device_name).cloud().mqtt.disconnect
-        )
-        account = self.config_entry.data.get(CONF_ACCOUNTNAME)
-        password = self.config_entry.data.get(CONF_PASSWORD)
-        await self.manager.login_and_initiate_cloud(account, password, True)
+        try:
+            await self.hass.async_add_executor_job(
+                self.manager.get_device_by_name(self.device_name).cloud().mqtt.disconnect
+            )
+            account = self.config_entry.data.get(CONF_ACCOUNTNAME)
+            password = self.config_entry.data.get(CONF_PASSWORD)
+            await self.manager.login_and_initiate_cloud(account, password, True)
+        except Exception as error:
+            self.error_handler.handle_error(error, "async_login")
 
     async def _async_update_data(self) -> MowingDevice:
         """Get data from the device."""
@@ -348,6 +429,9 @@ class MammotionDataUpdateCoordinator(DataUpdateCoordinator[MowingDevice]):
 
             if not ble_device and device.cloud() is None:
                 self.update_failures += 1
+                self.error_handler.handle_error(
+                    Exception("Could not find device"), "_async_update_data"
+                )
                 raise UpdateFailed("Could not find device")
 
             if ble_device and ble_device.name == device.name:
@@ -367,6 +451,7 @@ class MammotionDataUpdateCoordinator(DataUpdateCoordinator[MowingDevice]):
 
         except COMMAND_EXCEPTIONS as exc:
             self.update_failures += 1
+            self.error_handler.handle_error(exc, "_async_update_data")
             raise UpdateFailed(f"Updating Mammotion device failed: {exc}") from exc
         except SetupException:
             await self.async_login()
@@ -375,6 +460,10 @@ class MammotionDataUpdateCoordinator(DataUpdateCoordinator[MowingDevice]):
             if device.ble():
                 await device.ble().command("get_report_cfg")
             # TODO set a sensor to offline
+        except Exception as error:
+            self.update_failures += 1
+            self.error_handler.handle_error(error, "_async_update_data")
+            raise UpdateFailed(f"Updating Mammotion device failed: {error}") from error
 
         LOGGER.debug("Updated Mammotion device %s", self.device_name)
         LOGGER.debug("================= Debug Log =================")
