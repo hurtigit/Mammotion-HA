@@ -165,6 +165,7 @@ class MammotionConfigNumberEntity(MammotionBaseEntity, NumberEntity, RestoreEnti
         self._attr_native_max_value = entity_description.max_value
         self._attr_native_step = entity_description.step
         self._attr_native_value = self._attr_native_min_value  # Default value
+        self.error_handler = MammotionErrorHandling(coordinator.hass)
 
     async def async_set_native_value(self, value: float | int) -> None:
         try:
@@ -172,7 +173,7 @@ class MammotionConfigNumberEntity(MammotionBaseEntity, NumberEntity, RestoreEnti
             self.entity_description.set_fn(self.coordinator, value)
             self.async_write_ha_state()
         except Exception as error:
-            error_handler.handle_error(error, "async_set_native_value")
+            self.error_handler.handle_error(error, "async_set_native_value")
 
 
 class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
@@ -213,4 +214,4 @@ class MammotionWorkingNumberEntity(MammotionConfigNumberEntity):
             self.entity_description.set_fn(self.coordinator, value)
             self.async_write_ha_state()
         except Exception as error:
-            error_handler.handle_error(error, "async_set_native_value")
+            self.error_handler.handle_error(error, "async_set_native_value")

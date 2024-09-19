@@ -95,14 +95,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: MammotionConfigEntry) ->
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options update."""
-    await hass.config_entries.async_reload(entry.entry_id)
+    error_handler = MammotionErrorHandling(hass)
+    try:
+        await hass.config_entries.async_reload(entry.entry_id)
+    except Exception as error:
+        error_handler.handle_error(error, "_async_update_listener")
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        await hass.async_add_executor_job(
-            entry.runtime_data.manager.remove_device, entry.runtime_data.device_name
-        )
-    return unload_ok
+    error_handler = MammotionErrorHandling(hass)
+    try:
+        unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+        if unload_ok:
+            await hass.async_add_executor_job(
+                entry.runtime_data.manager.remove_device, entry.runtime_data.device_name
+            )
+        return unload_ok
+    except Exception as error:
+        error_handler.handle_error(error, "async_unload_entry")
+        return False

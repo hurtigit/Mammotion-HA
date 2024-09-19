@@ -42,36 +42,52 @@ class MammotionTracker(MammotionBaseEntity, TrackerEntity, RestoreEntity):
     def __init__(self, coordinator: MammotionDataUpdateCoordinator) -> None:
         """Initialize the Tracker."""
         super().__init__(coordinator, f"{coordinator.device_name}_gps")
-
         self._attr_name = coordinator.device_name
+        self.error_handler = MammotionErrorHandling(coordinator.hass)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return entity specific state attributes."""
-        return {
-            ATTR_DIRECTION: self.coordinator.manager.mower(
-                self.coordinator.device_name
-            ).location.orientation
-        }
+        try:
+            return {
+                ATTR_DIRECTION: self.coordinator.manager.mower(
+                    self.coordinator.device_name
+                ).location.orientation
+            }
+        except Exception as error:
+            self.error_handler.handle_error(error, "extra_state_attributes")
+            return {}
 
     @property
     def latitude(self) -> float | None:
         """Return latitude value of the device."""
-        return self.coordinator.manager.mower(
-            self.coordinator.device_name
-        ).location.device.latitude
+        try:
+            return self.coordinator.manager.mower(
+                self.coordinator.device_name
+            ).location.device.latitude
+        except Exception as error:
+            self.error_handler.handle_error(error, "latitude")
+            return None
 
     @property
     def longitude(self) -> float | None:
         """Return longitude value of the device."""
-        return self.coordinator.manager.mower(
-            self.coordinator.device_name
-        ).location.device.longitude
+        try:
+            return self.coordinator.manager.mower(
+                self.coordinator.device_name
+            ).location.device.longitude
+        except Exception as error:
+            self.error_handler.handle_error(error, "longitude")
+            return None
 
     @property
     def battery_level(self) -> int | None:
         """Return the battery level of the device."""
-        return self.coordinator.data.report_data.dev.battery_val
+        try:
+            return self.coordinator.data.report_data.dev.battery_val
+        except Exception as error:
+            self.error_handler.handle_error(error, "battery_level")
+            return None
 
     @property
     def source_type(self) -> SourceType:

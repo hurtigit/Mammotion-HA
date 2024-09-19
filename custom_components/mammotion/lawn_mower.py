@@ -90,7 +90,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Luba config entry."""
     coordinator = entry.runtime_data
-    async_add_entities([MammotionLawnMowerEntity(coordinator)])
+    error_handler = MammotionErrorHandling(hass)
+
+    try:
+        async_add_entities([MammotionLawnMowerEntity(coordinator)])
+    except Exception as error:
+        error_handler.handle_error(error, "async_setup_entry")
 
     platform = entity_platform.async_get_current_platform()
 

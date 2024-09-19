@@ -94,11 +94,11 @@ class MammotionButtonSensorEntity(MammotionBaseEntity, ButtonEntity):
         super().__init__(coordinator, entity_description.key)
         self.entity_description = entity_description
         self._attr_translation_key = entity_description.key
+        self.error_handler = MammotionErrorHandling(coordinator.hass)
 
     async def async_press(self) -> None:
         """Handle the button press."""
-        error_handler = MammotionErrorHandling(self.hass)
         try:
             await self.entity_description.press_fn(self.coordinator)
         except Exception as error:
-            error_handler.handle_error(error, "async_press")
+            self.error_handler.handle_error(error, "async_press")

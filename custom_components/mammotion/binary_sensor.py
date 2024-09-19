@@ -75,8 +75,13 @@ class MammotionBinarySensorEntity(MammotionBaseEntity, BinarySensorEntity):
         super().__init__(coordinator, entity_description.key)
         self.entity_description = entity_description
         self._attr_translation_key = entity_description.translation_key
+        self.error_handler = MammotionErrorHandling(coordinator.hass)
 
     @property
     def is_on(self) -> bool | None:
         """Return true if the binary sensor is on."""
-        return self.entity_description.is_on_fn(self.coordinator.data)
+        try:
+            return self.entity_description.is_on_fn(self.coordinator.data)
+        except Exception as error:
+            self.error_handler.handle_error(error, "is_on")
+            return None
