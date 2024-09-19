@@ -116,7 +116,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Mammotion number entities."""
-    coordinator = entry.runtime_data
+    coordinator: MammotionDataUpdateCoordinator = entry.runtime_data
     limits = coordinator.manager.mower(coordinator.device_name).limits
 
     entities: list[MammotionConfigNumberEntity] = []
