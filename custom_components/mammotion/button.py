@@ -66,7 +66,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Mammotion button sensor entity."""
-    coordinator = entry.runtime_data
+    coordinator: MammotionDataUpdateCoordinator = entry.runtime_data
 
     async_add_entities(
         MammotionButtonSensorEntity(coordinator, entity_description)

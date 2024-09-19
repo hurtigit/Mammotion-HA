@@ -196,7 +196,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor platform."""
-    coordinator = entry.runtime_data
+    coordinator: MammotionDataUpdateCoordinator = entry.runtime_data
 
     if not DeviceType.is_yuka(coordinator.device_name):
         async_add_entities(

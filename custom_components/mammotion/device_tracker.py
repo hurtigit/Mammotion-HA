@@ -22,7 +22,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the RTK tracker from config entry."""
-    coordinator = config_entry.runtime_data
+    coordinator: MammotionDataUpdateCoordinator = config_entry.runtime_data
 
     async_add_entities([MammotionTracker(coordinator)])
 
