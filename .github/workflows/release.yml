@@ -20,13 +20,13 @@ jobs:
         id: get_version
         run: |
           version=$(jq -r .version custom_components/mammotion/manifest.json)
-          echo "::set-output name=version::$version"
+          echo "version=$version" >> $GITHUB_ENV
 
       - name: Get previous version
         id: get_previous_version
         run: |
           previous_version=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "::set-output name=previous_version::$previous_version"
+          echo "previous_version=$previous_version" >> $GITHUB_ENV
 
       - name: Generate changelog
         id: changelog
@@ -35,7 +35,7 @@ jobs:
           changelog="${changelog//'%'/'%25'}"
           changelog="${changelog//$'\n'/'%0A'}"
           changelog="${changelog//$'\r'/'%0D'}"
-          echo "::set-output name=changelog::$changelog"
+          echo "changelog=$changelog" >> $GITHUB_ENV
 
       - name: Create Release
         id: create_release

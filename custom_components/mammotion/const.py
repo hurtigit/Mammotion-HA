@@ -1,35 +1,35 @@
 """Constants for the Mammotion Luba integration."""
 
 import logging
-from typing import Final
+from typing import final
 
 from bleak.exc import BleakError
 from bleak_retry_connector import BleakNotFoundError
 from pymammotion.mammotion.devices.mammotion_bluetooth import CharacteristicMissingError
 
-DOMAIN: Final = "mammotion"
+domain: final = "mammotion"
 
-DEVICE_SUPPORT = ("Luba", "Yuka")
+device_support = ("Luba", "Yuka")
 
-ATTR_DIRECTION = "direction"
+attr_direction = "direction"
 
-DEFAULT_RETRY_COUNT = 3
-CONF_RETRY_COUNT = "retry_count"
-LOGGER: Final = logging.getLogger(__package__)
+default_retry_count = 3
+conf_retry_count = "retry_count"
+logger: final = logging.getLogger(__package__)
 
-COMMAND_EXCEPTIONS = (
+command_exceptions = (
     BleakNotFoundError,
     CharacteristicMissingError,
     BleakError,
     TimeoutError,
 )
 
-CONF_STAY_CONNECTED_BLUETOOTH: Final = "stay_connected_bluetooth"
-CONF_ACCOUNTNAME: Final = "account_name"
-CONF_USE_WIFI: Final = "use_wifi"
-CONF_DEVICE_NAME: Final = "device_name"
-CONF_AUTH_DATA: Final = "auth_data"
-CONF_AEP_DATA: Final = "aep_data"
-CONF_SESSION_DATA: Final = "session_data"
-CONF_REGION_DATA: Final = "region_data"
-CONF_DEVICE_DATA: Final = "device_data"
+conf_stay_connected_bluetooth: final = "stay_connected_bluetooth"
+conf_accountname: final = "account_name"
+conf_use_wifi: final = "use_wifi"
+conf_device_name: final = "device_name"
+conf_auth_data: final = "auth_data"
+conf_aep_data: final = "aep_data"
+conf_session_data: final = "session_data"
+conf_region_data: final = "region_data"
+conf_device_data: final = "device_data"

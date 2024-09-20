@@ -79,6 +79,77 @@ class TestMappingManager(unittest.TestCase):
         except Exception as error:
             self.error_handler.handle_error(error, "test_list_zones")
 
+    def test_get_zone(self):
+        zone_id = "zone_1"
+        name = "Front Yard"
+        coordinates = [{"x": 1, "y": 1}, {"x": 2, "y": 2}]
+
+        try:
+            self.mapping_manager.create_zone(zone_id, name, coordinates)
+            zone = self.mapping_manager.get_zone(zone_id)
+
+            self.assertIsNotNone(zone)
+            self.assertEqual(zone.zone_id, zone_id)
+            self.assertEqual(zone.name, name)
+            self.assertEqual(zone.coordinates, coordinates)
+        except Exception as error:
+            self.error_handler.handle_error(error, "test_get_zone")
+
+    def test_update_zone_name_only(self):
+        zone_id = "zone_1"
+        name = "Front Yard"
+        coordinates = [{"x": 1, "y": 1}, {"x": 2, "y": 2}]
+
+        try:
+            self.mapping_manager.create_zone(zone_id, name, coordinates)
+
+            new_name = "Back Yard"
+            self.mapping_manager.update_zone(zone_id, new_name)
+            zone = self.mapping_manager.get_zone(zone_id)
+
+            self.assertEqual(zone.name, new_name)
+            self.assertEqual(zone.coordinates, coordinates)
+        except Exception as error:
+            self.error_handler.handle_error(error, "test_update_zone_name_only")
+
+    def test_update_zone_coordinates_only(self):
+        zone_id = "zone_1"
+        name = "Front Yard"
+        coordinates = [{"x": 1, "y": 1}, {"x": 2, "y": 2}]
+
+        try:
+            self.mapping_manager.create_zone(zone_id, name, coordinates)
+
+            new_coordinates = [{"x": 3, "y": 3}, {"x": 4, "y": 4}]
+            self.mapping_manager.update_zone(zone_id, coordinates=new_coordinates)
+            zone = self.mapping_manager.get_zone(zone_id)
+
+            self.assertEqual(zone.name, name)
+            self.assertEqual(zone.coordinates, new_coordinates)
+        except Exception as error:
+            self.error_handler.handle_error(error, "test_update_zone_coordinates_only")
+
+    def test_create_zone_with_existing_id(self):
+        zone_id = "zone_1"
+        name = "Front Yard"
+        coordinates = [{"x": 1, "y": 1}, {"x": 2, "y": 2}]
+
+        try:
+            self.mapping_manager.create_zone(zone_id, name, coordinates)
+            with self.assertRaises(ValueError):
+                self.mapping_manager.create_zone(zone_id, name, coordinates)
+        except Exception as error:
+            self.error_handler.handle_error(error, "test_create_zone_with_existing_id")
+
+    def test_delete_non_existent_zone(self):
+        zone_id = "zone_1"
+
+        try:
+            with self.assertRaises(ValueError):
+                self.mapping_manager.delete_zone(zone_id)
+        except Exception as error:
+            self.error_handler.handle_error(error, "test_delete_non_existent_zone")
+
 
 if __name__ == "__main__":
     unittest.main()
